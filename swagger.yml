@@ -1,0 +1,1103 @@
+openapi: 3.0.3
+info:
+  title: Operations Hub API
+  version: 1.0.0
+  description: API documentation for the Operations Hub FastAPI service.
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+tags:
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: Feature Flags
+  - name: Jobs
+  - name: Notifications
+  - name: Audit Logs
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Register a user
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRegister"
+      responses:
+        "201":
+          description: User registered successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/AuthRegisterData"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login and receive an access token
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserLogin"
+      responses:
+        "200":
+          description: Login successful.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/LoginData"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /users/:
+    get:
+      tags:
+        - Users
+      summary: List users
+      operationId: listUsers
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Users returned successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /users/{user_id}:
+    get:
+      tags:
+        - Users
+      summary: Get a user by ID
+      operationId: getUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: User returned successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags:
+        - Users
+      summary: Update a user
+      operationId: updateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: User updated successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UserUpdateResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /feature-flags/:
+    post:
+      tags:
+        - Feature Flags
+      summary: Create a feature flag
+      operationId: createFeatureFlag
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureFlagCreate"
+      responses:
+        "201":
+          description: Feature flag created successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/FeatureFlag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      tags:
+        - Feature Flags
+      summary: List feature flags
+      operationId: listFeatureFlags
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Feature flags returned successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/FeatureFlag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /feature-flags/{name}:
+    get:
+      tags:
+        - Feature Flags
+      summary: Get a feature flag
+      operationId: getFeatureFlag
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/FeatureFlagName"
+      responses:
+        "200":
+          description: Feature flag returned successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/FeatureFlag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags:
+        - Feature Flags
+      summary: Toggle a feature flag
+      operationId: toggleFeatureFlag
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/FeatureFlagName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureFlagUpdate"
+      responses:
+        "200":
+          description: Feature flag updated successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/FeatureFlag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /jobs/csv:
+    post:
+      tags:
+        - Jobs
+      summary: Submit a CSV import job
+      operationId: submitCsvJob
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: CSV job created successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: CSV import feature is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Uploaded CSV is larger than the configured limit.
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /jobs/report:
+    post:
+      tags:
+        - Jobs
+      summary: Submit a report generation job
+      operationId: submitReportJob
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobCreate"
+      responses:
+        "201":
+          description: Report job created successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Report generation feature is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /jobs/:
+    get:
+      tags:
+        - Jobs
+      summary: List jobs for the current user
+      operationId: listJobs
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Jobs returned successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /jobs/{job_id}:
+    get:
+      tags:
+        - Jobs
+      summary: Get a job by ID
+      operationId: getJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Job returned successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /notifications/:
+    post:
+      tags:
+        - Notifications
+      summary: Create a notification
+      operationId: createNotification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationCreate"
+      responses:
+        "201":
+          description: Notification created successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Admin access required or notifications feature is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /notifications/user/{recipient_id}:
+    get:
+      tags:
+        - Notifications
+      summary: List notifications for a recipient
+      operationId: listNotificationsForUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RecipientId"
+        - name: unread
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: When true, only unread notifications are returned.
+      responses:
+        "200":
+          description: Notifications returned successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /notifications/{notification_id}:
+    get:
+      tags:
+        - Notifications
+      summary: Get a notification
+      operationId: getNotification
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NotificationId"
+      responses:
+        "200":
+          description: Notification returned successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /notifications/{notification_id}/read:
+    post:
+      tags:
+        - Notifications
+      summary: Mark a notification as read
+      operationId: markNotificationRead
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NotificationId"
+      responses:
+        "200":
+          description: Notification marked as read.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /notifications/ws/{recipient_id}:
+    get:
+      tags:
+        - Notifications
+      summary: Notification websocket
+      operationId: notificationWebSocket
+      parameters:
+        - $ref: "#/components/parameters/RecipientId"
+      responses:
+        "101":
+          description: WebSocket connection established.
+      description: >
+        WebSocket endpoint for recipient-specific notification updates. The
+        connection path is `/notifications/ws/{recipient_id}`.
+
+  /audit-logs/:
+    post:
+      tags:
+        - Audit Logs
+      summary: Create an audit log entry
+      operationId: createAuditLog
+      security:
+        - internalToken: []
+      parameters:
+        - name: X-Internal-Token
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Internal service token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditLogCreate"
+      responses:
+        "201":
+          description: Audit log created successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/AuditLog"
+        "403":
+          description: Internal access only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FastApiError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      tags:
+        - Audit Logs
+      summary: Query audit logs
+      operationId: queryAuditLogs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: actor_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: action_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: module_source
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Start timestamp filter.
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: string
+          description: End timestamp filter.
+      responses:
+        "200":
+          description: Audit logs returned successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/AuditLog"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+
+  parameters:
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+    FeatureFlagName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+    NotificationId:
+      name: notification_id
+      in: path
+      required: true
+      schema:
+        type: string
+    RecipientId:
+      name: recipient_id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid, or expired credentials.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - $ref: "#/components/schemas/FastApiError"
+    Forbidden:
+      description: Caller is not allowed to perform this operation.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - $ref: "#/components/schemas/FastApiError"
+    NotFound:
+      description: Resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Resource already exists.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationError"
+
+  schemas:
+    Role:
+      type: string
+      enum:
+        - Admin
+        - Manager
+        - User
+    JobType:
+      type: string
+      enum:
+        - csv_import
+        - report
+    JobState:
+      type: string
+      enum:
+        - Pending
+        - Running
+        - Completed
+        - Failed
+        - Retried
+    NotificationState:
+      type: string
+      enum:
+        - Pending
+        - Sent
+        - Failed
+
+    UserRegister:
+      type: object
+      required:
+        - username
+        - email
+        - password
+      properties:
+        username:
+          type: string
+          example: alice
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        password:
+          type: string
+          minLength: 6
+          format: password
+          example: secret123
+        role:
+          $ref: "#/components/schemas/Role"
+      example:
+        username: alice
+        email: alice@example.com
+        password: secret123
+        role: User
+    UserLogin:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: alice
+        password:
+          type: string
+          format: password
+          example: secret123
+    UserUpdate:
+      type: object
+      properties:
+        is_active:
+          type: boolean
+        role:
+          $ref: "#/components/schemas/Role"
+    User:
+      type: object
+      required:
+        - user_id
+        - username
+        - email
+        - role
+        - is_active
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/Role"
+        is_active:
+          type: boolean
+    UserUpdateResult:
+      type: object
+      required:
+        - user_id
+        - username
+        - role
+        - is_active
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        is_active:
+          type: boolean
+
+    AuthRegisterData:
+      type: object
+      required:
+        - user_id
+        - username
+        - role
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+    LoginData:
+      type: object
+      required:
+        - access_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: bearer
+
+    FeatureFlagCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          example: csv_import
+        enabled:
+          type: boolean
+          default: false
+    FeatureFlagUpdate:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+    FeatureFlag:
+      type: object
+      required:
+        - name
+        - enabled
+      properties:
+        name:
+          type: string
+        enabled:
+          type: boolean
+
+    JobCreate:
+      type: object
+      required:
+        - job_type
+      properties:
+        job_type:
+          $ref: "#/components/schemas/JobType"
+        meta:
+          type: object
+          additionalProperties: true
+          nullable: true
+    Job:
+      type: object
+      required:
+        - job_id
+        - actor_id
+        - job_type
+        - state
+      properties:
+        job_id:
+          type: string
+        actor_id:
+          type: string
+        job_type:
+          $ref: "#/components/schemas/JobType"
+        state:
+          $ref: "#/components/schemas/JobState"
+        s3_key:
+          type: string
+          nullable: true
+        result_s3_key:
+          type: string
+          nullable: true
+        meta:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    NotificationCreate:
+      type: object
+      required:
+        - recipient_id
+        - subject
+        - body
+      properties:
+        recipient_id:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+    Notification:
+      type: object
+      required:
+        - notification_id
+        - recipient_id
+        - subject
+        - body
+        - is_read
+        - state
+        - retry_count
+      properties:
+        notification_id:
+          type: string
+        recipient_id:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        is_read:
+          type: boolean
+        state:
+          $ref: "#/components/schemas/NotificationState"
+        retry_count:
+          type: string
+
+    AuditLogCreate:
+      type: object
+      required:
+        - request_id
+        - actor_id
+        - action_type
+        - module_source
+        - source_ip
+      properties:
+        request_id:
+          type: string
+        actor_id:
+          type: string
+        action_type:
+          type: string
+        module_source:
+          type: string
+        source_ip:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+    AuditLog:
+      allOf:
+        - $ref: "#/components/schemas/AuditLogCreate"
+        - type: object
+          required:
+            - timestamp
+          properties:
+            timestamp:
+              type: string
+              format: date-time
+
+    SuccessResponse:
+      type: object
+      required:
+        - status
+        - code
+        - request_id
+        - data
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+        code:
+          type: integer
+        request_id:
+          type: string
+        data:
+          nullable: true
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - code
+        - error
+      properties:
+        status:
+          type: string
+          enum:
+            - error
+        code:
+          type: integer
+        request_id:
+          type: string
+          nullable: true
+        error:
+          type: string
+    FastApiError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+    ValidationError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+              msg:
+                type: string
+              type:
+                type: string

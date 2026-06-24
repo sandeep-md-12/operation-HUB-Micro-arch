@@ -49,7 +49,7 @@ async def _get_user_email(actor_id: str) -> str | None:
         user = await repo.get_by_id(actor_id)
         print("After cache if user is present ", user)
         if user:
-            return user.email  # Direct attribute access
+            return user.get("email")  # Fix dictionary dot-notation
     
     return None
 
@@ -96,11 +96,16 @@ def listen_job_events():
                 if email:
                     try:
                         await _send_email(email, subject, body)
-                    except Exception:
-                        pass
+                        print(f"📧 Email successfully sent to {email}")
+                    except Exception as e:
+                        print(f"❌ Error sending email: {e}")
+                        import traceback
+                        traceback.print_exc()
                 else:
                     print(f"⚠️ No email found for actor_id: {actor_id}")
-            except Exception:
-                continue
+            except Exception as e:
+                print(f"❌ Error processing event: {e}")
+                import traceback
+                traceback.print_exc()
 
     asyncio.run(_run())

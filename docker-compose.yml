@@ -104,25 +104,22 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
       - SQL_ECHO=${SQL_ECHO:-false}
     depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
+      - redis
+      - db
 
-  # ─────────────────────────────────────────────
-  # Nginx Reverse Proxy
-  # ─────────────────────────────────────────────
-  nginx:
-    image: nginx:alpine
-    container_name: rvl_nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      web:
-        condition: service_healthy
+volumes:
+  postgres_data:
+
+nginx:
+  image: nginx:alpine
+  container_name: rvl_nginx
+  restart: always
+  ports:
+    - "80:80"
+  volumes:
+    - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+  depends_on:
+    - web
 
 volumes:
   postgres_data:

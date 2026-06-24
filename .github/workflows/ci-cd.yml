@@ -227,6 +227,12 @@ jobs:
             sudo docker pull mdsandeepkumar2004/operations-hub:latest
 
             # ─────────────────────────────────────────────
+            # STEP 5.5: Stop and remove conflicting containers (due to hardcoded container_names)
+            # ─────────────────────────────────────────────
+            echo ">>> Cleaning up any conflicting containers..."
+            sudo docker rm -f rvl_redis rvl_postgres rvl_web rvl_celery_worker rvl_nginx 2>/dev/null || true
+
+            # ─────────────────────────────────────────────
             # STEP 6: Start all services with production compose override
             # ─────────────────────────────────────────────
             echo ">>> Starting services..."

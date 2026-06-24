@@ -1,5 +1,9 @@
 name: CI/CD Pipeline
 
+# ─── Triggers ───────────────────────────────────────────────────────────────
+# CI runs on every push and every pull request to main.
+# Build + CD only run when code is merged into main (not on PRs).
+# ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
     branches: [ main, master ]
@@ -7,8 +11,13 @@ on:
     branches: [ main, master ]
 
 jobs:
+# ═══════════════════════════════════════════════════════════════
+# JOB 1 — CI: Run Tests (Quality Gate)
+# Runs on every push and every pull request.
+# A failed test BLOCKS the pipeline — no image is built, no deploy happens.
+# ═══════════════════════════════════════════════════════════════
   ci:
-    name: Continuous Integration (Test)
+    name: "CI — Run Tests"
     runs-on: ubuntu-latest
 
     services:
@@ -26,7 +35,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -39,65 +48,121 @@ jobs:
 
       - name: Run Pytest
         env:
-          # All values pulled from GitHub Secrets — nothing hardcoded here
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          ALGORITHM: ${{ secrets.ALGORITHM }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          DATABASE_URL:          ${{ secrets.DATABASE_URL }}
+          SECRET_KEY:            ${{ secrets.SECRET_KEY }}
+          ALGORITHM:             ${{ secrets.ALGORITHM }}
+          AWS_REGION:            ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
-          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
-          CELERY_BROKER_URL: redis://localhost:6379/1
-          CELERY_RESULT_BACKEND: redis://localhost:6379/2
-          REDIS_URL: redis://localhost:6379/0
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          S3_BUCKET_NAME:        ${{ secrets.S3_BUCKET_NAME }}
+          DYNAMODB_TABLE_NAME:   ${{ secrets.DYNAMODB_TABLE_NAME }}
+          SMTP_HOST:             ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:             ${{ secrets.SMTP_PORT }}
+          SMTP_USER:             ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:         ${{ secrets.SMTP_PASSWORD }}
+          APP_BASE_URL:          ${{ secrets.APP_BASE_URL }}
           INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
-          SQL_ECHO: "false"
+          CELERY_BROKER_URL:     redis://localhost:6379/1
+          CELERY_RESULT_BACKEND: redis://localhost:6379/2
+          REDIS_URL:             redis://localhost:6379/0
+          SQL_ECHO:              "false"
         run: |
-          python -m pytest
+          python -m pytest --tb=short -v
 
-  cd:
-    name: Continuous Deployment (EC2)
+
+# ═══════════════════════════════════════════════════════════════
+# JOB 2 — Build Docker Image & Push to Docker Hub
+# Only runs after CI passes AND only on merges to main (not PRs).
+# Tags the image with both :latest and the short git SHA for traceability.
+# ═══════════════════════════════════════════════════════════════
+  build-and-push:
+    name: "Build & Push Docker Image"
     runs-on: ubuntu-latest
     needs: ci
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
 
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
     steps:
-      - name: Provision EC2 & Deploy via SSH
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Image Metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: mdsandeepkumar2004/operations-hub
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and Push Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+
+# ═══════════════════════════════════════════════════════════════
+# JOB 3 — CD: Deploy to EC2
+# Only runs after the image is successfully pushed to Docker Hub.
+# SSHs into EC2, writes .env from GitHub Secrets,
+# pulls the new image, and restarts services.
+# ═══════════════════════════════════════════════════════════════
+  cd:
+    name: "CD — Deploy to EC2"
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host:     ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: 22
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          port:     22
           script: |
+            set -e   # Stop immediately if any command fails
+
+            APP_DIR="/home/$USER/operations-hub"
 
             # ─────────────────────────────────────────────
             # STEP 1: Install Docker (if not already installed)
             # ─────────────────────────────────────────────
             if ! command -v docker &> /dev/null; then
-              echo ">>> Docker not found. Installing Docker..."
+              echo ">>> Installing Docker..."
               sudo apt-get update -y
               sudo apt-get install -y ca-certificates curl gnupg lsb-release
               sudo install -m 0755 -d /etc/apt/keyrings
-              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+                sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
               sudo chmod a+r /etc/apt/keyrings/docker.gpg
-              echo \
-                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
                 https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
                 sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
               sudo apt-get update -y
-              sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+              sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+                docker-buildx-plugin docker-compose-plugin
               sudo systemctl enable docker
               sudo systemctl start docker
-              # Allow current user to run docker without sudo
               sudo usermod -aG docker $USER
-              echo ">>> Docker installed successfully."
+              echo ">>> Docker installed."
             else
               echo ">>> Docker already installed. Skipping."
             fi
@@ -106,35 +171,31 @@ jobs:
             # STEP 2: Install Git (if not already installed)
             # ─────────────────────────────────────────────
             if ! command -v git &> /dev/null; then
-              echo ">>> Git not found. Installing Git..."
+              echo ">>> Installing Git..."
               sudo apt-get install -y git
-              echo ">>> Git installed successfully."
             else
               echo ">>> Git already installed. Skipping."
             fi
 
             # ─────────────────────────────────────────────
-            # STEP 3: Clone repo on first deploy, pull on subsequent deploys
+            # STEP 3: Clone repo (first deploy) or pull latest
             # ─────────────────────────────────────────────
-            APP_DIR="/home/$USER/operations-hub"
-
             if [ ! -d "$APP_DIR/.git" ]; then
-              echo ">>> Repo not found. Cloning for the first time..."
-              git clone ${{ secrets.GITHUB_REPO_URL }} "$APP_DIR"
+              echo ">>> Cloning repository for the first time..."
+              git clone ${{ secrets.REPO_URL }} "$APP_DIR"
             else
-              echo ">>> Repo found. Pulling latest changes..."
-              cd "$APP_DIR"
-              git pull origin main
+              echo ">>> Pulling latest code..."
+              cd "$APP_DIR" && git pull origin main
             fi
 
             cd "$APP_DIR"
 
             # ─────────────────────────────────────────────
-            # STEP 4: Write .env file from GitHub Secrets
-            # (Overwrites on every deploy to keep it in sync)
+            # STEP 4: Write .env from GitHub Secrets
+            # Overwrites on every deploy to stay in sync.
             # ─────────────────────────────────────────────
-            echo ">>> Writing .env file from GitHub Secrets..."
-            cat > .env <<EOF
+            echo ">>> Writing .env file..."
+            cat > .env << 'ENVEOF'
             DATABASE_URL=postgresql+asyncpg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@db:5432/${{ secrets.POSTGRES_DB }}
             POSTGRES_USER=${{ secrets.POSTGRES_USER }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
@@ -156,20 +217,36 @@ jobs:
             APP_BASE_URL=${{ secrets.APP_BASE_URL }}
             INTERNAL_SERVICE_TOKEN=${{ secrets.INTERNAL_SERVICE_TOKEN }}
             SQL_ECHO=false
-            EOF
-            echo ">>> .env file written successfully."
+            ENVEOF
 
             # ─────────────────────────────────────────────
-            # STEP 5: Build and start all Docker services
+            # STEP 5: Pull latest image from Docker Hub
+            # (Image was already built by Job 2 — no build on EC2)
             # ─────────────────────────────────────────────
-            echo ">>> Starting Docker services..."
-            sudo docker compose up -d --build
+            echo ">>> Pulling latest image from Docker Hub..."
+            sudo docker pull mdsandeepkumar2004/operations-hub:latest
 
             # ─────────────────────────────────────────────
-            # STEP 6: Clean up unused Docker images
+            # STEP 6: Start all services with production compose override
             # ─────────────────────────────────────────────
-            echo ">>> Cleaning up old Docker images..."
+            echo ">>> Starting services..."
+            sudo docker compose \
+              -f docker-compose.yml \
+              -f docker-compose.prod.yml \
+              --env-file .env \
+              up -d --remove-orphans
+
+            # ─────────────────────────────────────────────
+            # STEP 7: Verify the app is healthy
+            # ─────────────────────────────────────────────
+            echo ">>> Waiting for health check..."
+            sleep 20
+            curl -f http://localhost/health && echo ">>> Health check PASSED!" || echo ">>> WARNING: Health check failed!"
+
+            # ─────────────────────────────────────────────
+            # STEP 8: Clean up old unused images
+            # ─────────────────────────────────────────────
+            echo ">>> Pruning old images..."
             sudo docker image prune -f
 
             echo ">>> Deployment complete!"
-

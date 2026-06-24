@@ -1,30 +1,47 @@
 version: '3.8'
 
 services:
+
+  # ─────────────────────────────────────────────
+  # PostgreSQL Database
+  # ─────────────────────────────────────────────
   db:
     image: postgres:15-alpine
     container_name: rvl_postgres
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-invoice_details}
       POSTGRES_DB: ${POSTGRES_DB:-operations_hub}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # ─────────────────────────────────────────────
+  # Redis (Celery broker + cache)
+  # ─────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: rvl_redis
-    restart: always
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # ─────────────────────────────────────────────
+  # FastAPI Web Application
+  # ─────────────────────────────────────────────
   web:
     build: .
+    image: mdsandeepkumar2004/operations-hub:latest
     container_name: rvl_web
-    restart: always
+    restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-invoice_details}@db:5432/${POSTGRES_DB:-operations_hub}
       - SECRET_KEY=${SECRET_KEY}
@@ -47,23 +64,25 @@ services:
     expose:
       - "8000"
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
 
-  nginx:
-    image: nginx:alpine
-    container_name: rvl_nginx
-    restart: always
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - web
+  # ─────────────────────────────────────────────
+  # Celery Background Worker
+  # ─────────────────────────────────────────────
   worker:
     build: .
+    image: mdsandeepkumar2004/operations-hub:latest
     container_name: rvl_celery_worker
-    restart: always
+    restart: unless-stopped
     command: celery -A app.utils.celery_app.celery_app worker --loglevel=info
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-invoice_details}@db:5432/${POSTGRES_DB:-operations_hub}
@@ -85,8 +104,25 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
       - SQL_ECHO=${SQL_ECHO:-false}
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # Nginx Reverse Proxy
+  # ─────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: rvl_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      web:
+        condition: service_healthy
 
 volumes:
   postgres_data:

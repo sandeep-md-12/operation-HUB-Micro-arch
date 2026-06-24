@@ -10,7 +10,7 @@ from app.routes.notification_routes import router as notification_router
 from app.routes.audit_log_routes import router as audit_log_router
 from app.tasks.notification_tasks import listen_job_events
 
-
+# just to push code 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
